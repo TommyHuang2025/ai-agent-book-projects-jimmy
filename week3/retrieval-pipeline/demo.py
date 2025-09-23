@@ -1,4 +1,10 @@
-"""Demo script showcasing dense vs sparse embedding strengths."""
+"""Demo script showcasing dense vs sparse embedding strengths.
+
+Service Configuration:
+- Dense Embedding: http://localhost:4240
+- Sparse Embedding: http://localhost:4241  
+- Retrieval Pipeline: http://localhost:4242
+"""
 
 import asyncio
 import httpx
@@ -8,7 +14,7 @@ import json
 class RetrievalDemo:
     """Demo for the retrieval pipeline."""
     
-    def __init__(self, pipeline_url: str = "http://localhost:8002"):
+    def __init__(self, pipeline_url: str = "http://localhost:4242"):
         self.pipeline_url = pipeline_url
         
     async def index_document(self, text: str, doc_id: str, metadata: Dict = None):
@@ -251,7 +257,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Retrieval pipeline demonstration")
-    parser.add_argument("--url", default="http://localhost:8002",
+    parser.add_argument("--url", default="http://localhost:4242",
                        help="Pipeline service URL")
     
     args = parser.parse_args()
@@ -265,10 +271,10 @@ if __name__ == "__main__":
     except httpx.ConnectError:
         print("\nError: Could not connect to the retrieval pipeline service.")
         print("Please ensure all services are running:")
-        print("  1. Dense embedding service (port 8000)")
-        print("  2. Sparse embedding service (port 8001)")
-        print("  3. Retrieval pipeline (port 8002)")
-        print("\nRun: ./start_all_services.sh")
+        print("  1. Dense embedding service (port 4240)")
+        print("  2. Sparse embedding service (port 4241)")
+        print("  3. Retrieval pipeline (port 4242)")
+        print("\nRun: ./restart_services.sh")
         sys.exit(1)
     except KeyboardInterrupt:
         print("\nDemo interrupted by user")

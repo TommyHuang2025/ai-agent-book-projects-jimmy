@@ -1,5 +1,6 @@
 """Configuration for the retrieval pipeline."""
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
@@ -13,8 +14,15 @@ class SearchMode(str, Enum):
 @dataclass
 class ServiceConfig:
     """Configuration for external services."""
-    dense_service_url: str = "http://localhost:8000"
-    sparse_service_url: str = "http://localhost:8001"
+    dense_service_url: str = "http://localhost:4240"  # Port 4240 for dense service
+    sparse_service_url: str = "http://localhost:4241"  # Port 4241 for sparse service
+    
+    @classmethod
+    def from_env(cls):
+        """Create config from environment variables."""
+        dense_url = os.getenv("DENSE_SERVICE_URL", "http://localhost:4240")
+        sparse_url = os.getenv("SPARSE_SERVICE_URL", "http://localhost:4241")
+        return cls(dense_service_url=dense_url, sparse_service_url=sparse_url)
     
 @dataclass
 class RerankerConfig:
@@ -41,4 +49,16 @@ class PipelineConfig:
     
     # Server settings
     host: str = "0.0.0.0"
-    port: int = 8002
+    port: int = 4242  # Default port for retrieval pipeline
+    
+    @classmethod
+    def from_env(cls):
+        """Create config from environment variables."""
+        config = cls()
+        if os.getenv("PIPELINE_PORT"):
+            config.port = int(os.getenv("PIPELINE_PORT"))
+        if os.getenv("PIPELINE_HOST"):
+            config.host = os.getenv("PIPELINE_HOST")
+        if os.getenv("DEBUG"):
+            config.debug = os.getenv("DEBUG").lower() == "true"
+        return config

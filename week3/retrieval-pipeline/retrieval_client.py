@@ -49,16 +49,12 @@ class RetrievalClient:
         """Index a document in the sparse embedding service."""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                # Sparse service expects slightly different format
+                # Sparse service now accepts doc_id directly
                 payload = {
                     "text": text,
+                    "doc_id": doc_id,  # Pass doc_id directly
                     "metadata": metadata or {}
                 }
-                # Add doc_id to metadata for sparse service
-                if metadata:
-                    payload["metadata"]["doc_id"] = doc_id
-                else:
-                    payload["metadata"] = {"doc_id": doc_id}
                     
                 response = await client.post(f"{self.sparse_url}/index", json=payload)
                 response.raise_for_status()
@@ -135,8 +131,8 @@ class RetrievalClient:
                 
                 results = []
                 for idx, item in enumerate(data):
-                    # Extract doc_id from metadata if available
-                    doc_id = item.get("metadata", {}).get("doc_id", item.get("doc_id", f"doc_{idx}"))
+                    # Now doc_id is returned directly from the sparse service
+                    doc_id = item.get("doc_id", f"doc_{idx}")
                     
                     results.append(SearchResult(
                         doc_id=doc_id,
@@ -147,8 +143,8 @@ class RetrievalClient:
                         rank=idx + 1,
                         debug_info={
                             "bm25_score": item["score"],
-                            "matched_terms": item.get("matched_terms", []),
-                            "doc_length": item.get("doc_length", 0),
+                            "matched_terms": item.get("debug", {}).get("matched_terms", []) if item.get("debug") else [],
+                            "doc_length": item.get("debug", {}).get("doc_length", 0) if item.get("debug") else 0,
                             "original_rank": idx + 1
                         }
                     ))

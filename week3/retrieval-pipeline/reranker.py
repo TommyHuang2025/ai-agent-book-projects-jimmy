@@ -7,6 +7,11 @@ from FlagEmbedding import FlagReranker
 import logging
 import time
 import numpy as np
+import os
+import sys
+from pathlib import Path
+from huggingface_hub import snapshot_download
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +30,52 @@ class RerankResult:
 
 class Reranker:
     """Reranker using BGE-Reranker-v2 model."""
+    
+    def _ensure_model_downloaded(self, model_name: str):
+        """Check if model is cached and download if needed with progress.
+        
+        Args:
+            model_name: HuggingFace model name
+        """
+        # Check cache directory
+        cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+        model_id = model_name.replace("/", "--")
+        model_cache_path = cache_dir / f"models--{model_id}"
+        
+        if model_cache_path.exists() and any(model_cache_path.iterdir()):
+            logger.info(f"Model already cached at {model_cache_path}")
+            return
+        
+        logger.info(f"Model not found in cache. Downloading {model_name}...")
+        logger.info("This is a one-time download. The model will be cached for future use.")
+        
+        try:
+            # Use huggingface_hub to download with progress
+            class DownloadProgressBar:
+                def __init__(self):
+                    self.pbar = None
+                    self.total_size = 0
+                    self.downloaded = 0
+                
+                def __call__(self, chunk_size: int):
+                    if self.pbar is None:
+                        return
+                    self.downloaded += chunk_size
+                    self.pbar.update(chunk_size)
+                    
+            # Download the model with progress tracking
+            logger.info("Downloading model files...")
+            snapshot_download(
+                repo_id=model_name,
+                cache_dir=cache_dir,
+                resume_download=True,
+                local_files_only=False
+            )
+            logger.info("Model download completed!")
+            
+        except Exception as e:
+            logger.warning(f"Could not pre-download model: {e}")
+            logger.info("Model will be downloaded automatically during initialization...")
     
     def __init__(self, model_name: str = "BAAI/bge-reranker-v2-m3", 
                  device: str = None, 
@@ -56,14 +107,19 @@ class Reranker:
         logger.info(f"Initializing reranker with model: {model_name}")
         logger.info(f"Device: {device}, FP16: {self.use_fp16}")
         
+        # Check if model needs to be downloaded
+        self._ensure_model_downloaded(model_name)
+        
         # Initialize the model
+        logger.info("Loading reranker model into memory...")
+        start_time = time.time()
         self.model = FlagReranker(
             model_name,
             use_fp16=self.use_fp16,
             device=device
         )
-        
-        logger.info("Reranker initialized successfully")
+        elapsed = time.time() - start_time
+        logger.info(f"Reranker initialized successfully in {elapsed:.2f}s")
     
     def rerank(self, 
                query: str, 

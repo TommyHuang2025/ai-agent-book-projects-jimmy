@@ -393,8 +393,8 @@ def main():
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
-        help="Port to bind to (default: 8000)"
+        default=4240,
+        help="Port to bind to (default: 4240)"
     )
     parser.add_argument(
         "--debug",

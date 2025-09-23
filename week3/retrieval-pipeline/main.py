@@ -3,6 +3,7 @@
 import logging
 import sys
 from typing import Dict, Any, Optional, List
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -22,11 +23,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create FastAPI app
+# Initialize pipeline
+config = PipelineConfig()
+pipeline: Optional[RetrievalPipeline] = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events."""
+    global pipeline
+    # Startup
+    try:
+        logger.info("Starting retrieval pipeline...")
+        pipeline = RetrievalPipeline(config)
+        logger.info("Pipeline initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize pipeline: {e}")
+        raise
+    
+    yield
+    
+    # Shutdown (cleanup if needed)
+    logger.info("Shutting down retrieval pipeline...")
+
+# Create FastAPI app with lifespan
 app = FastAPI(
     title="Hybrid Retrieval Pipeline",
     description="Educational retrieval pipeline combining dense embeddings, sparse search, and neural reranking",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -37,10 +61,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Initialize pipeline
-config = PipelineConfig()
-pipeline: Optional[RetrievalPipeline] = None
 
 # Pydantic models
 class IndexRequest(BaseModel):
@@ -60,18 +80,6 @@ class SearchRequest(BaseModel):
 class DeleteRequest(BaseModel):
     """Request model for document deletion."""
     doc_id: str = Field(..., description="Document ID to delete")
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the pipeline on startup."""
-    global pipeline
-    try:
-        logger.info("Starting retrieval pipeline...")
-        pipeline = RetrievalPipeline(config)
-        logger.info("Pipeline initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize pipeline: {e}")
-        raise
 
 @app.get("/")
 async def root():
@@ -228,10 +236,10 @@ def main():
     
     parser = argparse.ArgumentParser(description="Retrieval Pipeline Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind")
-    parser.add_argument("--port", type=int, default=8002, help="Port to bind")
+    parser.add_argument("--port", type=int, default=4242, help="Port to bind (default: 4242)")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
-    parser.add_argument("--dense-url", default="http://localhost:8000", help="Dense service URL")
-    parser.add_argument("--sparse-url", default="http://localhost:8001", help="Sparse service URL")
+    parser.add_argument("--dense-url", default="http://localhost:4240", help="Dense service URL")
+    parser.add_argument("--sparse-url", default="http://localhost:4241", help="Sparse service URL")
     
     args = parser.parse_args()
     

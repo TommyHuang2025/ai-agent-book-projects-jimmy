@@ -20,7 +20,7 @@ This project demonstrates:
                      │
                      ▼
 ┌──────────────────────────────────────────────┐
-│         Retrieval Pipeline (Port 8002)        │
+│         Retrieval Pipeline (Port 4242)        │
 │                                              │
 │  ┌──────────────────────────────────────┐   │
 │  │     Document Store (In-Memory)        │   │
@@ -34,7 +34,7 @@ This project demonstrates:
          ▼                  ▼
 ┌─────────────────┐  ┌─────────────────┐
 │  Dense Service  │  │  Sparse Service │
-│   (Port 8000)   │  │   (Port 8001)   │
+│   (Port 4240)   │  │   (Port 4241)   │
 │                 │  │                 │
 │   BGE-M3 Model  │  │   BM25 Engine   │
 └─────────────────┘  └─────────────────┘
@@ -105,23 +105,23 @@ pip install -r requirements.txt
 ```
 
 This will start:
-- Dense embedding service on port 8000
-- Sparse embedding service on port 8001
-- Retrieval pipeline on port 8002
+- Dense embedding service on port 4240
+- Sparse embedding service on port 4241
+- Retrieval pipeline on port 4242
 
 2. **Or start individually**:
 ```bash
 # Terminal 1: Dense service
 cd ../dense-embedding
-python main.py --port 8000
+python main.py --port 4240
 
 # Terminal 2: Sparse service
 cd ../sparse-embedding
-python server.py --port 8001
+python server.py --port 4241
 
 # Terminal 3: Pipeline
 cd ../retrieval-pipeline
-python main.py --port 8002
+python main.py --port 4242
 ```
 
 ### Testing the Pipeline
@@ -142,7 +142,7 @@ This demonstrates real queries with explanations.
 
 3. **Access API documentation**:
 ```
-http://localhost:8002/docs
+http://localhost:4242/docs
 ```
 
 ## 📊 Educational Test Cases
@@ -273,7 +273,7 @@ The search response provides educational insights:
 ## 🔍 Troubleshooting
 
 ### Services won't start
-- Check ports 8000-8002 are free
+- Check ports 4240-4242 are free
 - Ensure models downloaded properly
 - Check Python version (3.8+)
 

@@ -1,67 +1,59 @@
-"""Configuration module for the vector similarity search service."""
+"""Configuration for the dense embedding service."""
 
 import os
 from enum import Enum
+from dataclasses import dataclass, field
 from typing import Optional
-from pydantic import BaseModel, Field
 
-
-class IndexType(str, Enum):
-    """Supported index types for vector similarity search."""
+class IndexType(Enum):
+    """Supported index types."""
     ANNOY = "annoy"
     HNSW = "hnsw"
 
-
-class ServiceConfig(BaseModel):
-    """Service configuration settings."""
+@dataclass
+class ServiceConfig:
+    """Service configuration."""
+    # Server settings
+    host: str = "0.0.0.0"
+    port: int = 4240  # Default port for dense embedding service
     
     # Model settings
-    model_name: str = Field(default="BAAI/bge-m3", description="BGE-M3 model name")
-    use_fp16: bool = Field(default=True, description="Use FP16 for model inference")
-    max_seq_length: int = Field(default=512, description="Maximum sequence length for embeddings")
-    embedding_dim: int = Field(default=1024, description="BGE-M3 embedding dimension")
+    model_name: str = "BAAI/bge-m3"
+    use_fp16: bool = True
+    max_seq_length: int = 512
     
     # Index settings
-    index_type: IndexType = Field(default=IndexType.HNSW, description="Type of index to use")
-    max_documents: int = Field(default=100000, description="Maximum number of documents in index")
-    
-    # ANNOY specific settings
-    annoy_n_trees: int = Field(default=50, description="Number of trees for ANNOY index")
-    annoy_metric: str = Field(default="angular", description="Distance metric for ANNOY")
+    index_type: IndexType = IndexType.HNSW
+    max_documents: int = 100000
     
     # HNSW specific settings
-    hnsw_ef_construction: int = Field(default=200, description="HNSW ef parameter during construction")
-    hnsw_M: int = Field(default=32, description="HNSW M parameter (number of connections)")
-    hnsw_ef_search: int = Field(default=100, description="HNSW ef parameter during search")
-    hnsw_space: str = Field(default="cosine", description="Distance metric for HNSW")
+    hnsw_ef_construction: int = 200
+    hnsw_M: int = 16
+    hnsw_ef_search: int = 50
+    hnsw_space: str = "cosine"
     
-    # Server settings
-    host: str = Field(default="0.0.0.0", description="Server host")
-    port: int = Field(default=8000, description="Server port")
-    debug: bool = Field(default=True, description="Enable debug mode")
+    # Annoy specific settings
+    annoy_n_trees: int = 50
+    annoy_metric: str = "angular"
     
     # Logging settings
-    log_level: str = Field(default="DEBUG", description="Logging level")
-    show_embeddings: bool = Field(default=False, description="Show embedding vectors in logs")
+    log_level: str = "INFO"
+    debug: bool = False
+    show_embeddings: bool = False
     
     @classmethod
-    def from_env(cls) -> "ServiceConfig":
-        """Load configuration from environment variables."""
-        config_dict = {}
+    def from_env(cls):
+        """Create config from environment variables."""
+        config = cls()
         
-        # Load from environment variables with PREFIX "VEC_"
-        prefix = "VEC_"
-        for field_name, field_info in cls.model_fields.items():
-            env_var = f"{prefix}{field_name.upper()}"
-            if env_var in os.environ:
-                value = os.environ[env_var]
-                # Convert to appropriate type
-                if field_info.annotation == bool:
-                    value = value.lower() in ("true", "1", "yes")
-                elif field_info.annotation == int:
-                    value = int(value)
-                elif field_info.annotation == IndexType:
-                    value = IndexType(value.lower())
-                config_dict[field_name] = value
-        
-        return cls(**config_dict)
+        # Override with environment variables if present
+        if os.getenv("DENSE_PORT"):
+            config.port = int(os.getenv("DENSE_PORT"))
+        if os.getenv("DENSE_HOST"):
+            config.host = os.getenv("DENSE_HOST")
+        if os.getenv("DENSE_MODEL"):
+            config.model_name = os.getenv("DENSE_MODEL")
+        if os.getenv("DEBUG"):
+            config.debug = os.getenv("DEBUG").lower() == "true"
+            
+        return config

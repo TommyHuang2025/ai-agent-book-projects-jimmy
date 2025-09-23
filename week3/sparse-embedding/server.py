@@ -36,6 +36,7 @@ search_engine = SparseSearchEngine()
 class IndexDocumentRequest(BaseModel):
     text: str = Field(..., description="Text content to index")
     metadata: Optional[Dict] = Field(None, description="Optional metadata")
+    doc_id: Optional[str] = Field(None, description="Optional external document ID")
 
 
 class BatchIndexRequest(BaseModel):
@@ -48,7 +49,7 @@ class SearchRequest(BaseModel):
 
 
 class DocumentResponse(BaseModel):
-    doc_id: int
+    doc_id: str  # Changed to str to support external IDs
     text: str
     metadata: Optional[Dict]
     score: Optional[float] = None
@@ -225,7 +226,7 @@ async def root():
                 const response = await fetch('/index', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({text: text, metadata: metadata})
+                    body: JSON.stringify({text: text, metadata: metadata, doc_id: null})
                 });
                 
                 if (response.ok) {
@@ -366,9 +367,16 @@ async def root():
 async def index_document(request: IndexDocumentRequest):
     """Index a single document"""
     logger.info(f"Received index request for document of length {len(request.text)}")
+    if request.doc_id:
+        logger.info(f"External doc_id provided: {request.doc_id}")
     
     try:
-        doc_id = search_engine.index_document(request.text, request.metadata)
+        # Extract doc_id from metadata if not provided directly
+        external_doc_id = request.doc_id
+        if not external_doc_id and request.metadata and 'doc_id' in request.metadata:
+            external_doc_id = request.metadata['doc_id']
+        
+        doc_id = search_engine.index_document(request.text, request.metadata, external_doc_id)
         logger.info(f"Document indexed successfully with ID {doc_id}")
         
         return {
@@ -416,7 +424,7 @@ async def search(request: SearchRequest):
 
 
 @app.get("/document/{doc_id}", response_model=DocumentResponse)
-async def get_document(doc_id: int):
+async def get_document(doc_id: str):
     """Retrieve a specific document by ID"""
     logger.info(f"Retrieving document {doc_id}")
     
@@ -478,9 +486,18 @@ async def get_recent_logs(lines: int = Query(100, description="Number of log lin
 
 
 if __name__ == "__main__":
-    logger.info("Starting Educational Sparse Vector Search Engine Server")
-    logger.info("Server will run on http://localhost:8001")
-    logger.info("Visit http://localhost:8001 for the web interface")
-    logger.info("API documentation available at http://localhost:8001/docs")
+    import sys
+    # Allow overriding port from command line
+    port = 4241  # Default to 4241 to avoid conflicts with common services
+    if len(sys.argv) > 1:
+        try:
+            port = int(sys.argv[1])
+        except ValueError:
+            pass
     
-    uvicorn.run(app, host="0.0.0.0", port=8001, log_level="debug")
+    logger.info("Starting Educational Sparse Vector Search Engine Server")
+    logger.info(f"Server will run on http://localhost:{port}")
+    logger.info(f"Visit http://localhost:{port} for the web interface")
+    logger.info(f"API documentation available at http://localhost:{port}/docs")
+    
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

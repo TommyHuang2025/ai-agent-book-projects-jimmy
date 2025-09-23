@@ -301,22 +301,37 @@ class SparseSearchEngine:
         self.index = InvertedIndex()
         self.bm25 = None
         self.next_doc_id = 0
+        # Map external doc_id to internal doc_id
+        self.external_to_internal = {}
+        # Map internal doc_id to external doc_id
+        self.internal_to_external = {}
         logger.info("SparseSearchEngine initialized")
     
-    def index_document(self, text: str, metadata: Optional[Dict] = None) -> int:
+    def index_document(self, text: str, metadata: Optional[Dict] = None, external_doc_id: Optional[str] = None) -> str:
         """Index a new document and return its ID"""
-        doc_id = self.next_doc_id
+        # Generate internal ID
+        internal_doc_id = self.next_doc_id
         self.next_doc_id += 1
         
-        logger.info(f"Indexing document with ID {doc_id}")
-        self.index.add_document(doc_id, text, metadata)
+        # Use external_doc_id if provided, otherwise use internal ID as string
+        if external_doc_id:
+            doc_id_str = external_doc_id
+        else:
+            doc_id_str = str(internal_doc_id)
+        
+        # Store mappings
+        self.external_to_internal[doc_id_str] = internal_doc_id
+        self.internal_to_external[internal_doc_id] = doc_id_str
+        
+        logger.info(f"Indexing document with external ID '{doc_id_str}' (internal ID {internal_doc_id})")
+        self.index.add_document(internal_doc_id, text, metadata)
         
         # Reinitialize BM25 with updated index
         self.bm25 = BM25(self.index)
         
-        return doc_id
+        return doc_id_str
     
-    def index_batch(self, documents: List[Dict]) -> List[int]:
+    def index_batch(self, documents: List[Dict]) -> List[str]:
         """Index multiple documents at once"""
         logger.info(f"Batch indexing {len(documents)} documents")
         doc_ids = []
@@ -324,7 +339,8 @@ class SparseSearchEngine:
         for doc in documents:
             text = doc.get('text', '')
             metadata = doc.get('metadata', None)
-            doc_id = self.index_document(text, metadata)
+            external_doc_id = doc.get('doc_id', None)
+            doc_id = self.index_document(text, metadata, external_doc_id)
             doc_ids.append(doc_id)
         
         logger.info(f"Batch indexing complete. Indexed {len(doc_ids)} documents")
@@ -341,31 +357,40 @@ class SparseSearchEngine:
         
         # Format results
         formatted_results = []
-        for doc_id, score, debug_info in results:
+        for internal_doc_id, score, debug_info in results:
+            # Get external doc_id
+            external_doc_id = self.internal_to_external.get(internal_doc_id, str(internal_doc_id))
+            
             result = {
-                'doc_id': doc_id,
+                'doc_id': external_doc_id,  # Use external doc_id
                 'score': score,
-                'text': self.index.documents[doc_id],
-                'metadata': self.index.doc_metadata.get(doc_id, {}),
+                'text': self.index.documents[internal_doc_id],
+                'metadata': self.index.doc_metadata.get(internal_doc_id, {}),
                 'debug': debug_info
             }
             formatted_results.append(result)
         
         return formatted_results
     
-    def get_document(self, doc_id: int) -> Optional[Dict]:
-        """Retrieve a document by ID"""
-        if doc_id not in self.index.documents:
+    def get_document(self, doc_id) -> Optional[Dict]:
+        """Retrieve a document by ID (can be internal or external)"""
+        # Check if it's an external doc_id
+        if isinstance(doc_id, str) and doc_id in self.external_to_internal:
+            internal_id = self.external_to_internal[doc_id]
+        elif isinstance(doc_id, int) and doc_id in self.index.documents:
+            internal_id = doc_id
+            doc_id = self.internal_to_external.get(internal_id, str(internal_id))
+        else:
             return None
         
         return {
-            'doc_id': doc_id,
-            'text': self.index.documents[doc_id],
-            'metadata': self.index.doc_metadata.get(doc_id, {}),
+            'doc_id': doc_id,  # Return external doc_id
+            'text': self.index.documents[internal_id],
+            'metadata': self.index.doc_metadata.get(internal_id, {}),
             'statistics': {
-                'length': self.index.doc_lengths[doc_id],
-                'unique_terms': len(self.index.term_frequency[doc_id]),
-                'top_terms': self.index.term_frequency[doc_id].most_common(10)
+                'length': self.index.doc_lengths[internal_id],
+                'unique_terms': len(self.index.term_frequency[internal_id]),
+                'top_terms': self.index.term_frequency[internal_id].most_common(10)
             }
         }
     
@@ -387,4 +412,6 @@ class SparseSearchEngine:
         self.index = InvertedIndex()
         self.bm25 = None
         self.next_doc_id = 0
+        self.external_to_internal = {}
+        self.internal_to_external = {}
         logger.info("Index cleared")
