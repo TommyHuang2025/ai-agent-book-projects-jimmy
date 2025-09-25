@@ -27,6 +27,7 @@ class ConversationConfig:
     max_memory_context: int = 10
     temperature: float = 0.7
     max_tokens: int = 4096
+    recent_history_limit: int = 10  # Number of recent turns to include in context
 
 
 class ConversationalAgent:
@@ -141,25 +142,21 @@ You MUST analyze the context, user's questions and memories in detail, and provi
         # Add memory summary
         memory_str = self.memory_manager.get_context_string()
         if memory_str:
-            context_parts.append("=== USER CONTEXT ===")
+            context_parts.append("=== USER CONTEXT (FROM MEMORY) ===")
             context_parts.append(memory_str)
             context_parts.append("")
         
-        # Add ALL conversation history
+        # Add RECENT conversation history for short-term context
         if self.conversation_history:
-            # Get ALL conversation history, not just recent
-            all_conversations = self.conversation_history.conversations if hasattr(self.conversation_history, 'conversations') else []
+            recent_turns = self.conversation_history.get_recent_turns(limit=self.config.recent_history_limit)
             
-            if all_conversations:
-                context_parts.append("=== FULL CONVERSATION HISTORY ===")
-                context_parts.append(f"Total conversations: {len(all_conversations)}")
-                context_parts.append("")
+            if recent_turns:
+                context_parts.append("=== RECENT CONVERSATION HISTORY ===")
                 
-                for turn in all_conversations:
-                    context_parts.append(f"[Session: {turn.session_id}, Turn {turn.turn_number}, Time: {turn.timestamp}]")
+                for turn in recent_turns:
                     context_parts.append(f"User: {turn.user_message}")
                     context_parts.append(f"Assistant: {turn.assistant_message}")
-                    context_parts.append("")
+                context_parts.append("")
         
         return "\n".join(context_parts)
     
@@ -200,7 +197,7 @@ You MUST analyze the context, user's questions and memories in detail, and provi
         
         # Add to conversation
         self.conversation.append({"role": "user", "content": full_message})
-        
+
         try:
             # Call the model with streaming
             stream = self.client.chat.completions.create(

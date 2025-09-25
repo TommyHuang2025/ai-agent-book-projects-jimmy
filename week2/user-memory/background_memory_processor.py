@@ -369,6 +369,9 @@ Focus on extracting factual information that would be useful for future conversa
             Processing results with list of operations
         """
         with self.processing_lock:
+            # CRITICAL: Reload history to get latest updates from the agent
+            self.conversation_history.load_history()
+
             # Get recent conversation turns
             recent_turns = self.conversation_history.get_recent_turns(
                 limit=self.config.context_window
@@ -456,7 +459,8 @@ Focus on extracting factual information that would be useful for future conversa
                 'analyzed_turns': len(unprocessed_turns),
                 'operations': operations,
                 'summary': summary,
-                'details': operations  # Operations are the details
+                'details': operations,  # Operations are the details
+                'tool_calls': tool_calls
             }
             
             # Update last processed timestamp and count
@@ -596,38 +600,55 @@ Focus on extracting factual information that would be useful for future conversa
     
     def process_conversation_batch(self, conversation_contexts: List[List[Dict[str, str]]]) -> List[Dict[str, Any]]:
         """
-        Process multiple conversation contexts in batch
+        Process multiple conversation contexts in batch.
+        This method now correctly reflects the memory updates performed by the internal analysis agent.
         
         Args:
             conversation_contexts: List of conversation contexts
             
         Returns:
-            List of processing results
+            List of processing results, with accurate summaries of memory operations.
         """
         results = []
         
         for context in conversation_contexts:
-            updates = self.analyze_conversation(context)
+            # Clear previous tool calls to ensure a clean slate for each context
+            self.analysis_agent.tool_calls = []
             
+            # Analyze the conversation. This returns [] but populates the agent's tool_calls list as a side effect.
+            self.analyze_conversation(context)
+            
+            # Get the tool call history from the agent to see what was done
+            tool_calls = getattr(self.analysis_agent, 'tool_calls', [])
+            
+            # Create an accurate summary and list of operations from the actual tool calls
             operations = []
-            for update in updates:
-                operation = {
-                    'action': update.action,
-                    'content': update.content,
-                }
-                if update.memory_id:
-                    operation['memory_id'] = update.memory_id
-                operations.append(operation)
+            summary = {'added': 0, 'updated': 0, 'deleted': 0}
             
-            if updates:
-                apply_result = self.apply_memory_updates(updates)
+            for tool_call in tool_calls:
+                action = tool_call.tool_name.replace('_memory', '')  # e.g., 'add_memory' -> 'add'
+                
+                operations.append({
+                    'action': action,
+                    'content': tool_call.arguments.get('content'),
+                    'memory_id': tool_call.arguments.get('memory_id'),
+                    'result': tool_call.result
+                })
+                
+                # Only count successful operations in the summary
+                if tool_call.result and tool_call.result.get('success'):
+                    if action == 'add':
+                        summary['added'] += 1
+                    elif action == 'update':
+                        summary['updated'] += 1
+                    elif action == 'delete':
+                        summary['deleted'] += 1
+
+            # Format the final result for this specific conversation context
+            if operations:
                 result = {
                     'operations': operations,
-                    'summary': {
-                        'added': apply_result['added'],
-                        'updated': apply_result['updated'],
-                        'deleted': apply_result['deleted']
-                    }
+                    'summary': summary
                 }
             else:
                 result = {
@@ -635,7 +656,7 @@ Focus on extracting factual information that would be useful for future conversa
                     'operations': [],
                     'summary': {'added': 0, 'updated': 0, 'deleted': 0}
                 }
-            
+
             results.append(result)
         
         return results
