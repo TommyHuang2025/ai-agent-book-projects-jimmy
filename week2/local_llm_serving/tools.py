@@ -410,7 +410,8 @@ class ToolRegistry:
     @staticmethod
     def code_interpreter(code: str) -> Dict:
         """
-        Execute Python code safely
+        Execute Python code in a full Python environment.
+        This provides unrestricted access to Python's built-in functions and standard library.
         """
         try:
             # Strip markdown code blocks and other formatting
@@ -429,54 +430,63 @@ class ToolRegistry:
             # Replace ^ with ** for exponentiation
             code = re.sub(r'\^', '**', code)
             
-            # Create safe namespace with common modules and functions
-            safe_namespace = {
-                '__builtins__': {
-                    'abs': abs, 'all': all, 'any': any, 'sum': sum,
-                    'min': min, 'max': max, 'round': round, 'len': len,
-                    'list': list, 'dict': dict, 'set': set, 'tuple': tuple,
-                    'enumerate': enumerate, 'zip': zip, 'map': map, 'filter': filter,
-                    'sorted': sorted, 'reversed': reversed, 'range': range,
-                    'int': int, 'float': float, 'str': str, 'bool': bool,
-                    'print': print, 'pow': pow
-                },
+            # Create a full Python namespace with all builtins available
+            # This gives the agent access to the complete Python environment
+            import sys
+            namespace = {
+                '__builtins__': __builtins__,
                 'math': math,
                 'random': random,
-                'datetime': datetime
+                'datetime': datetime,
+                'sys': sys,
+                're': re,
+                'json': json
             }
             
-            # Capture output
+            # Capture both stdout and stderr
             output_buffer = io.StringIO()
+            error_buffer = io.StringIO()
             
-            with contextlib.redirect_stdout(output_buffer):
-                exec(code, safe_namespace)
+            with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(error_buffer):
+                exec(code, namespace)
             
-            # Get output and result
+            # Get output and any error messages
             printed_output = output_buffer.getvalue()
+            error_output = error_buffer.getvalue()
             
             # Try to get result from common variable names
-            result = safe_namespace.get('result', None)
+            result = namespace.get('result', None)
             if result is None:
                 for var_name in ['A', 'total', 'sum', 'output', 'answer', 'final', 'value']:
-                    if var_name in safe_namespace:
-                        result = safe_namespace[var_name]
+                    if var_name in namespace:
+                        result = namespace[var_name]
                         break
             
-            # Get all user-defined variables (excluding imports and builtins)
-            variables = {
-                k: str(v) for k, v in safe_namespace.items()
-                if not k.startswith('__') and k not in ['math', 'random', 'datetime'] and not callable(v)
-            }
-            
-            return {
-                "code": code,
+            response = {
                 "result": result,
                 "output": printed_output if printed_output else None,
-                "variables": variables if variables else None,
+                "stderr": error_output if error_output else None,
                 "success": True
             }
+            
+            return response
+            
+        except SyntaxError as e:
+            error_msg = f"Syntax Error on line {e.lineno}: {e.msg}\n{e.text}"
+            return {
+                "error": error_msg,
+                "error_type": "SyntaxError",
+                "success": False
+            }
         except Exception as e:
-            return {"code": code, "error": str(e), "success": False}
+            import traceback
+            error_trace = traceback.format_exc()
+            return {
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": error_trace,
+                "success": False
+            }
     
 def format_tool_response(tool_name: str, tool_result: str) -> Dict:
     """Format tool response for the chat model"""
