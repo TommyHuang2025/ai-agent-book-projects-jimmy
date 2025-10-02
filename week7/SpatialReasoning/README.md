@@ -1,6 +1,8 @@
 # VIRL-VL: Vision-Language Navigation with Reinforcement Learning
 
-本文档详细介绍 VIRL-VL（Vision-Instruction-based Real-Life Vision-Language）实验的设计、实现和评估方法。
+本文档详细介绍基于 V-IRL 平台的视觉-语言导航强化学习实验的设计、实现和评估方法。
+
+**V-IRL (Virtual Intelligence in Real Life)** 是一个用于构建和测试虚拟智能体的开源平台，使智能体能够利用真实的地理空间数据和街景图像在虚拟的真实世界环境中交互。
 
 ## 目录
 
@@ -24,9 +26,18 @@
 
 ## 1. 实验概述
 
-VIRL-VL 是基于真实世界 Google Street View 数据的视觉-语言导航任务，旨在验证**强化学习（RL）相比监督微调（SFT）在视觉泛化能力上的优势**。
+本实验基于 **V-IRL (Virtual Intelligence in Real Life)** 平台实现视觉-语言导航任务，旨在验证**强化学习（RL）相比监督微调（SFT）在视觉泛化能力上的优势**。
 
-**核心发现**：
+**V-IRL 平台简介**：
+- **平台定位**：用于构建和测试虚拟智能体的开源平台，使智能体能够在虚拟但真实的环境中感知、思考和行动
+- **核心特性**：
+  - 利用真实世界的地理空间数据和街景图像
+  - 支持全球范围内的城市导航和任务执行
+  - 提供丰富的感官输入（视觉、地理位置、地点信息等）
+  - 支持多种任务类型（导航、地点推荐、城市规划、协作等）
+- **技术基础**：基于 Google Maps Platform 的街景和地理空间 API
+
+**本实验核心发现**：
 - RL 训练的模型能够泛化到视觉上分布外（OOD）的环境
 - SFT 训练的模型倾向于记忆训练数据，在 OOD 场景下泛化能力差
 - RL 通过 outcome-based reward 提升了模型的底层视觉识别能力
@@ -51,7 +62,7 @@ VIRL-VL 是基于真实世界 Google Street View 数据的视觉-语言导航任
 
 **控制变量**：
 - 使用相同的 base model（Llama-3.2-11B-Vision）
-- 使用相同的任务环境（V-IRL navigation）
+- 使用相同的任务环境（V-IRL 平台的导航任务）
 - 使用相同的评估指标（per-step accuracy, success rate）
 
 **自变量**：
