@@ -176,7 +176,7 @@ def main():
     parser.add_argument(
         "--input_file",
         type=str,
-        default="../tinker-cookbook/example-data/multilingual.txt",
+        default="./example-data/multilingual.txt",
         help="Path to input file with sentences (one per line)",
     )
     parser.add_argument(
