@@ -29,7 +29,11 @@ def load_jsonl_dataset(file_path: str) -> Dataset:
     Returns:
         Dataset: Hugging Face Dataset object
     """
-    print(f"Loading dataset from: {file_path}")
+    import os
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    
+    if local_rank == 0:
+        print(f"Loading dataset from: {file_path}")
     
     data = []
     with open(file_path, "r", encoding="utf-8") as f:
@@ -37,12 +41,13 @@ def load_jsonl_dataset(file_path: str) -> Dataset:
             if line.strip():
                 data.append(json.loads(line))
     
-    print(f"Loaded {len(data)} training examples")
-    
-    # Show sample
-    if data:
-        print(f"\nSample data:")
-        print(f"  Messages: {data[0]['messages']}")
+    if local_rank == 0:
+        print(f"Loaded {len(data)} training examples")
+        
+        # Show sample
+        if data:
+            print(f"\nSample data:")
+            print(f"  Messages: {data[0]['messages']}")
     
     # Convert to HF Dataset
     dataset = Dataset.from_list(data)
@@ -64,11 +69,15 @@ def prepare_model_and_tokenizer(model_name: str, use_lora: bool = True,
     Returns:
         tuple: (model, tokenizer, peft_config or None)
     """
-    print(f"\n{'='*80}")
-    print(f"Loading Model and Tokenizer")
-    print(f"{'='*80}")
-    print(f"Model: {model_name}")
-    print(f"LoRA: {'Enabled' if use_lora else 'Disabled'}")
+    import os
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    
+    if local_rank == 0:
+        print(f"\n{'='*80}")
+        print(f"Loading Model and Tokenizer")
+        print(f"{'='*80}")
+        print(f"Model: {model_name}")
+        print(f"LoRA: {'Enabled' if use_lora else 'Disabled'}")
     
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -78,28 +87,36 @@ def prepare_model_and_tokenizer(model_name: str, use_lora: bool = True,
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
     
-    print(f"Tokenizer loaded: vocab_size={len(tokenizer)}")
+    if local_rank == 0:
+        print(f"Tokenizer loaded: vocab_size={len(tokenizer)}")
     
     # Load model
+    # Note: Don't use device_map='auto' in distributed training - let DDP/FSDP handle device placement
     model_kwargs = {
         "torch_dtype": torch.bfloat16,
-        "device_map": "auto",
         "trust_remote_code": True,
         "use_cache": False,  # Disable for training
     }
     
-    print(f"Loading model (this may take a few minutes)...")
+    # Only use device_map for single GPU (non-distributed)
+    if local_rank == -1 or int(os.environ.get("WORLD_SIZE", "1")) == 1:
+        model_kwargs["device_map"] = "auto"
+    
+    if local_rank == 0:
+        print(f"Loading model (this may take a few minutes)...")
     model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
     
-    print(f"Model loaded successfully!")
-    print(f"  Parameters: {model.num_parameters() / 1e9:.2f}B")
+    if local_rank == 0:
+        print(f"Model loaded successfully!")
+        print(f"  Parameters: {model.num_parameters() / 1e9:.2f}B")
     
     # Configure LoRA if enabled
     peft_config = None
     if use_lora:
-        print(f"\nConfiguring LoRA:")
-        print(f"  Rank: {lora_rank}")
-        print(f"  Alpha: {lora_alpha}")
+        if local_rank == 0:
+            print(f"\nConfiguring LoRA:")
+            print(f"  Rank: {lora_rank}")
+            print(f"  Alpha: {lora_alpha}")
         
         peft_config = LoraConfig(
             r=lora_rank,
@@ -113,13 +130,14 @@ def prepare_model_and_tokenizer(model_name: str, use_lora: bool = True,
         model = get_peft_model(model, peft_config)
         
         # Print trainable parameters
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_percent = 100 * trainable_params / total_params
-        
-        print(f"\nTrainable Parameters:")
-        print(f"  Trainable: {trainable_params:,} ({trainable_percent:.2f}%)")
-        print(f"  Total: {total_params:,}")
+        if local_rank == 0:
+            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            total_params = sum(p.numel() for p in model.parameters())
+            trainable_percent = 100 * trainable_params / total_params
+            
+            print(f"\nTrainable Parameters:")
+            print(f"  Trainable: {trainable_params:,} ({trainable_percent:.2f}%)")
+            print(f"  Total: {total_params:,}")
     
     return model, tokenizer, peft_config
 
@@ -163,27 +181,32 @@ def train_model(
     Returns:
         SFTTrainer: The trained trainer object
     """
-    print(f"\n{'='*80}")
-    print(f"Training Configuration")
-    print(f"{'='*80}")
+    import os
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    
+    if local_rank == 0:
+        print(f"\n{'='*80}")
+        print(f"Training Configuration")
+        print(f"{'='*80}")
     
     # Calculate effective batch size
     world_size = torch.cuda.device_count() if torch.cuda.is_available() else 1
     effective_batch_size = per_device_train_batch_size * gradient_accumulation_steps * world_size
     
-    print(f"Training Parameters:")
-    print(f"  Output directory: {output_dir}")
-    print(f"  Epochs: {num_train_epochs}")
-    print(f"  Per-device batch size: {per_device_train_batch_size}")
-    print(f"  Gradient accumulation steps: {gradient_accumulation_steps}")
-    print(f"  Number of GPUs: {world_size}")
-    print(f"  Effective batch size: {effective_batch_size}")
-    print(f"  Learning rate: {learning_rate}")
-    print(f"  LR scheduler: {lr_scheduler_type}")
-    print(f"  Warmup ratio: {warmup_ratio}")
-    print(f"  Max length: {max_length}")
-    print(f"  Logging steps: {logging_steps}")
-    print(f"  Save strategy: {save_strategy}")
+    if local_rank == 0:
+        print(f"Training Parameters:")
+        print(f"  Output directory: {output_dir}")
+        print(f"  Epochs: {num_train_epochs}")
+        print(f"  Per-device batch size: {per_device_train_batch_size}")
+        print(f"  Gradient accumulation steps: {gradient_accumulation_steps}")
+        print(f"  Number of GPUs: {world_size}")
+        print(f"  Effective batch size: {effective_batch_size}")
+        print(f"  Learning rate: {learning_rate}")
+        print(f"  LR scheduler: {lr_scheduler_type}")
+        print(f"  Warmup ratio: {warmup_ratio}")
+        print(f"  Max length: {max_length}")
+        print(f"  Logging steps: {logging_steps}")
+        print(f"  Save strategy: {save_strategy}")
     
     # Training configuration (matching OpenAI Cookbook gpt-oss-20b example)
     training_args = SFTConfig(
@@ -211,9 +234,10 @@ def train_model(
     )
     
     # Initialize trainer
-    print(f"\n{'='*80}")
-    print(f"Initializing SFTTrainer")
-    print(f"{'='*80}")
+    if local_rank == 0:
+        print(f"\n{'='*80}")
+        print(f"Initializing SFTTrainer")
+        print(f"{'='*80}")
     
     trainer = SFTTrainer(
         model=model,
@@ -228,21 +252,23 @@ def train_model(
     )
     
     # Start training
-    print(f"\n{'='*80}")
-    print(f"Starting Training")
-    print(f"{'='*80}")
-    print(f"Training time estimates (1 epoch):")
-    print(f"  - 1x H100 GPU: ~15-30 minutes")
-    print(f"  - 2x H100 GPUs: ~8-15 minutes")
-    print(f"  - 4x H100 GPUs: ~4-8 minutes")
-    print(f"  - 8x H100 GPUs: ~2-5 minutes")
-    print(f"{'='*80}\n")
+    if local_rank == 0:
+        print(f"\n{'='*80}")
+        print(f"Starting Training")
+        print(f"{'='*80}")
+        print(f"Training time estimates (1 epoch):")
+        print(f"  - 1x H100 GPU: ~15-30 minutes")
+        print(f"  - 2x H100 GPUs: ~8-15 minutes")
+        print(f"  - 4x H100 GPUs: ~4-8 minutes")
+        print(f"  - 8x H100 GPUs: ~2-5 minutes")
+        print(f"{'='*80}\n")
     
     trainer.train()
     
-    print(f"\n{'='*80}")
-    print(f"Training Complete!")
-    print(f"{'='*80}")
+    if local_rank == 0:
+        print(f"\n{'='*80}")
+        print(f"Training Complete!")
+        print(f"{'='*80}")
     
     return trainer
 
@@ -394,23 +420,28 @@ def main():
         lr_scheduler_type=args.lr_scheduler_type,
     )
     
-    # Save final model
-    print(f"\nSaving final model to: {args.output_dir}")
+    # Save final model (only main process)
+    import os
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    
+    if local_rank == 0:
+        print(f"\nSaving final model to: {args.output_dir}")
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
     
-    print(f"\n{'='*80}")
-    print(f"Training Complete!")
-    print(f"{'='*80}")
-    print(f"Model saved to: {args.output_dir}")
-    print(f"\nTo use the model:")
-    print(f"  from transformers import AutoModelForCausalLM, AutoTokenizer")
-    print(f"  from peft import PeftModel")
-    print(f"  ")
-    print(f"  tokenizer = AutoTokenizer.from_pretrained('{args.output_dir}')")
-    print(f"  model = AutoModelForCausalLM.from_pretrained('{args.model_name}')")
-    print(f"  model = PeftModel.from_pretrained(model, '{args.output_dir}')")
-    print(f"{'='*80}\n")
+    if local_rank == 0:
+        print(f"\n{'='*80}")
+        print(f"Training Complete!")
+        print(f"{'='*80}")
+        print(f"Model saved to: {args.output_dir}")
+        print(f"\nTo use the model:")
+        print(f"  from transformers import AutoModelForCausalLM, AutoTokenizer")
+        print(f"  from peft import PeftModel")
+        print(f"  ")
+        print(f"  tokenizer = AutoTokenizer.from_pretrained('{args.output_dir}')")
+        print(f"  model = AutoModelForCausalLM.from_pretrained('{args.model_name}')")
+        print(f"  model = PeftModel.from_pretrained(model, '{args.output_dir}')")
+        print(f"{'='*80}\n")
 
 
 if __name__ == "__main__":
