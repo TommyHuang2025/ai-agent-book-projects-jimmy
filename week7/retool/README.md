@@ -559,11 +559,58 @@ KL 散度（actor/ppo_kl）在前十个步骤中始终保持在 1.3e-5 到 2.4e-
 
 ### 训练中断如何恢复？
 
-verl 框架支持从检查点恢复训练。在配置文件中设置 `resume_from_path` 参数指向之前保存的检查点目录即可。训练脚本会自动加载模型权重、优化器状态和训练进度。
+verl 框架支持从检查点恢复训练。在训练脚本中设置 `resume_mode` 和 `resume_from_path` 参数即可。有两种常用的恢复模式：
+
+**方式一：指定具体的检查点（推荐）**
+
+如果训练在第 54 步中断，可以指定恢复到第 50 步的检查点：
+
+```bash
+bash recipe/retool/run_qwen2-32b_dapo.sh \
+    trainer.resume_mode=resume_path \
+    trainer.resume_from_path=recipe/retool/checkpoint/qwen2.5-32b_dapo_with_tool/global_step_50
+```
+
+这种方式需要明确指定包含 `global_step_` 的检查点路径。训练将从该检查点继续，全局步数会自动设置为 50。
+
+**方式二：自动恢复最新检查点**
+
+如果希望系统自动找到并恢复最新的检查点，可以使用 `auto` 模式：
+
+```bash
+bash recipe/retool/run_qwen2-32b_dapo.sh \
+    trainer.resume_mode=auto
+```
+
+这种方式会自动搜索 `default_local_dir` 目录下的最新检查点并恢复。如果找不到检查点，训练将从头开始。
+
+训练脚本会自动加载模型权重、优化器状态、数据加载器状态和训练进度，确保训练无缝继续。
 
 ### 如何评估模型性能？
 
-模型训练完成后，可以在 AIME 测试集上进行评估。使用 verl 提供的评估脚本，输入测试数据和模型检查点路径，脚本会自动运行推理并计算准确率等指标。
+无论是训练完成后还是训练进行到一半，都可以评估特定的检查点。评估分为两个步骤：首先合并模型，然后运行评估。
+
+**步骤一：合并模型检查点**
+
+由于训练过程中使用 FSDP 将模型分片保存，评估前需要先将检查点合并为 Hugging Face 标准格式。以评估第 40 步的检查点为例：
+
+```bash
+python3 -m verl.model_merger merge \
+    --backend fsdp \
+    --local_dir qwen2.5-32b_dapo_with_tool/global_step_40/actor/ \
+    --target_dir qwen2.5-32b_dapo_with_tool/global_step_40/actor/huggingface
+```
+
+参数说明：
+- `--backend fsdp`：指定源检查点的格式为 FSDP
+- `--local_dir`：FSDP 分片检查点的路径（通常是 `global_step_X/actor/` 目录）
+- `--target_dir`：合并后模型的保存路径（建议使用 `/huggingface` 子目录）
+
+合并过程会读取所有分片文件，重构完整的模型权重，并以 Hugging Face Transformers 标准格式保存。这个过程需要一定的磁盘空间来存储合并后的模型文件。
+
+**步骤二：运行评估**
+
+合并完成后，可以使用 verl 提供的评估脚本，输入测试数据和合并后的模型路径，脚本会自动运行推理并计算准确率等指标。评估可以在训练过程中的任意检查点上进行，便于跟踪模型在不同训练阶段的性能表现。
 
 ### 多机训练如何配置？
 
