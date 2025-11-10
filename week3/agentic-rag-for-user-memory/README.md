@@ -1,333 +1,300 @@
 # Agentic RAG for User Memory Evaluation
 
-An educational project that combines Retrieval-Augmented Generation (RAG) with user memory management for evaluating conversational AI systems. This system chunks conversation histories, indexes them for efficient retrieval, and provides an agentic interface for querying historical conversations with memory persistence.
+An educational project that combines **Retrieval-Augmented Generation (RAG)** with **User Memory Evaluation** to demonstrate how AI agents can effectively manage and query long-term conversation histories.
 
-## 🎯 Purpose
+## 🎯 Learning Objectives
 
-This project demonstrates how to:
-- **Chunk conversations** into manageable segments (20 rounds per chunk)
-- **Index conversation history** using RAG for efficient retrieval
-- **Integrate user memory** from previous conversations
-- **Provide agentic tools** for querying and analyzing conversation data
-- **Evaluate memory consistency** across long conversation histories
+This project teaches you:
+1. **How to chunk long conversations** into manageable segments for indexing
+2. **How to integrate with external retrieval pipelines** for hybrid search
+3. **How to implement agentic RAG** with tool-calling and the ReAct pattern
+4. **How to evaluate memory systems** with automatic LLM-based scoring
+5. **How to optimize retrieval** for conversation-based queries
+6. **How to integrate evaluation frameworks** from different projects
 
-## 🏗️ Architecture
+## 🏗️ Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    User Query                            │
-└────────────────────────┬────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│              UserMemoryRAGAgent                          │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │            ReAct Pattern Loop                     │   │
-│  │  1. Thought → 2. Action → 3. Observation         │   │
-│  └──────────────────────────────────────────────────┘   │
-└────────────────────────┬────────────────────────────────┘
-                         │
-          ┌──────────────┴──────────────┐
-          │                             │
-          ▼                             ▼
-┌──────────────────────┐     ┌──────────────────────┐
-│   RAG Indexer         │     │  Memory Integration  │
-│                       │     │                      │
-│  • Local Storage      │     │  • Memory Notes      │
-│  • Chroma DB          │     │  • Memory Cards      │
-│  • FAISS              │     │  • Consolidation     │
-└───────────┬───────────┘     └──────────┬───────────┘
-            │                             │
-            ▼                             ▼
-┌──────────────────────┐     ┌──────────────────────┐
-│  Conversation Chunks  │     │   User Memories      │
-│                       │     │                      │
-│  20 rounds per chunk  │     │  Extracted from      │
-│  with 2-round overlap │     │  conversations       │
-└───────────────────────┘     └──────────────────────┘
+┌─────────────────────────────────────────┐
+│         User Memory Test Cases          │
+│     (60 test cases, 3 difficulty layers) │
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────┐
+│        Conversation Chunker              │
+│  (Splits into 20-round segments with    │
+│   overlap and contextual enrichment)     │
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────┐
+│    External Retrieval Pipeline           │
+│      (Port 4242 - Hybrid Search)         │
+│  ┌─────────────┐  ┌──────────────────┐  │
+│  │Dense Search │  │ Sparse Search    │  │
+│  │ (Embeddings)│  │    (BM25)        │  │
+│  └─────────────┘  └──────────────────┘  │
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────┐
+│       Agentic RAG Agent                  │
+│   (ReAct pattern with memory tools)      │
+│                                          │
+│  Tools:                                  │
+│  • search_memory                         │
+│  • get_conversation_context              │
+│  • get_full_conversation                 │
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────┐
+│        LLM Evaluation System              │
+│   (Automatic scoring and reasoning)      │
+│  • Reward score (0.0-1.0)                │
+│  • Pass/Fail determination               │
+│  • Detailed reasoning                    │
+└─────────────────────────────────────────┘
 ```
+
+## 📚 Key Concepts
+
+### 1. Conversation Chunking
+Long conversation histories are divided into chunks of approximately 20 rounds (user-assistant exchanges). This makes them:
+- **Searchable**: Smaller units are easier to index and retrieve
+- **Contextual**: Each chunk maintains context from surrounding conversations
+- **Efficient**: Reduces the amount of text the LLM needs to process
+
+### 2. Hybrid Retrieval (via External Pipeline)
+The system integrates with an external retrieval pipeline service that provides:
+- **Dense Retrieval**: Uses embeddings for semantic similarity search
+- **Sparse Retrieval**: Uses BM25 for keyword matching and exact phrase search
+- **Hybrid Fusion**: Combines scores from both methods for optimal results
+- **Scalable Architecture**: Offloads indexing and search to dedicated service
+
+### 3. Agentic RAG Pattern
+The agent follows the ReAct (Reasoning + Acting) pattern:
+1. **Reason** about what information is needed
+2. **Act** by calling search tools
+3. **Observe** the results
+4. **Iterate** until sufficient information is found
+
+### 4. Automatic LLM Evaluation
+The system integrates with week2/user-memory-evaluation to provide:
+- **Reward Scoring**: Continuous score from 0.0 to 1.0
+- **Pass/Fail Assessment**: Automatic determination (≥0.6 passes)
+- **Detailed Reasoning**: Explanation of evaluation decisions
+- **Full Visibility**: Enhanced logging of LLM responses and tool calls
+
+### 5. Contextual Enrichment
+Chunks are enhanced with:
+- Metadata about the conversation (business, department, timestamps)
+- Context from previous and next chunks
+- Semantic tags for better retrieval
 
 ## 🚀 Quick Start
 
-### 1. Installation
+### Prerequisites
+- Python 3.8+
+- **Retrieval Pipeline Service** running on port 4242 (see below)
+- API keys for:
+  - Kimi/Moonshot or another supported LLM provider (for agent responses)
+  - OpenAI API (optional, for LLM evaluation)
+
+### Installation
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
+# Clone the project
 cd projects/week3/agentic-rag-for-user-memory
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Copy and configure environment variables
+# Setup environment variables
 cp env.example .env
 # Edit .env with your API keys
 ```
 
-### 2. Run the Demo
+### Start the Retrieval Pipeline (Required)
+
+This project uses the external retrieval pipeline service for indexing and search:
 
 ```bash
-# Run the quickstart script to see everything in action
-python quickstart.py
+# In a separate terminal, start the retrieval pipeline
+cd projects/week3/retrieval-pipeline
+python api_server.py
 ```
 
-This will:
-1. Create sample conversation histories
-2. Chunk them into 20-round segments
-3. Build a RAG index
-4. Extract memories
-5. Run test queries
+The retrieval pipeline must be running on `http://localhost:4242` before using this system.
 
-### 3. Interactive Mode
+### Running the Demo
 
 ```bash
-# Enter interactive query mode
-python main.py query
+# Test the system setup
+python test_pipeline.py
 
-# Build index from your own conversation history
-python main.py build your_history.json --save-chunks
+# Run interactive mode
+python main.py
 
-# Query with a specific question
-python main.py query "What medications does the user take?"
+# Quick demo with a simple test case
+python main.py --mode demo
+
+# Batch evaluation of a category
+python main.py --mode batch --category layer1
 ```
 
-## 📁 Project Structure
+## 📖 Usage Guide
 
-```
-agentic-rag-for-user-memory/
-├── config.py                 # Configuration management
-├── conversation_chunker.py   # Chunks conversations into segments
-├── rag_indexer.py           # RAG indexing and retrieval
-├── memory_integration.py    # User memory management
-├── agent.py                 # Main agentic RAG system
-├── main.py                  # CLI interface
-├── quickstart.py            # Demo script
-├── requirements.txt         # Python dependencies
-├── env.example             # Environment variables template
-└── README.md               # This file
-```
+### Interactive Mode
 
-## 🛠️ Core Components
+The interactive interface provides these options:
 
-### 1. Conversation Chunker
-Splits long conversation histories into chunks of 20 rounds (user-assistant pairs) with configurable overlap for context preservation.
+1. **Load Test Cases**: Load test cases from the evaluation framework
+2. **View Test Cases**: Browse loaded test cases and their details
+3. **Configure Settings**: Adjust chunking, indexing, and agent parameters
+4. **Evaluate Single Test**: Run evaluation on a specific test case
+5. **Evaluate by Category**: Test all cases in a difficulty layer
+6. **Generate Report**: Create detailed evaluation reports
+
+### Example Workflow
 
 ```python
-from conversation_chunker import ConversationChunker
-from config import ChunkingConfig
-
-config = ChunkingConfig(rounds_per_chunk=20, overlap_rounds=2)
-chunker = ConversationChunker(config)
-chunks, metadata = chunker.chunk_conversation_history("history.json")
-```
-
-### 2. RAG Indexer
-Indexes conversation chunks for efficient semantic retrieval using embeddings.
-
-```python
-from rag_indexer import RAGIndexerFactory
-from config import RAGConfig
-
-config = RAGConfig(kb_type="local", top_k=5)
-indexer = RAGIndexerFactory.create(config)
-results = indexer.search("user's travel plans")
-```
-
-### 3. Memory Integration
-Manages user memories extracted from conversations with RAG-enhanced context.
-
-```python
-from memory_integration import MemoryRAGIntegration
-
-memory_integration = MemoryRAGIntegration()
-memories = memory_integration.search_memories_with_context(
-    "user preferences",
-    include_conversation_context=True
-)
-```
-
-### 4. Agent Tools
-
-The agent provides several tools for querying and managing the indexed data:
-
-- **search_conversations**: Search indexed conversation chunks
-- **search_memories**: Search user memories with context
-- **get_conversation_details**: Get details of specific chunks
-- **extract_memory_from_conversation**: Extract memories from conversations
-- **update_memory**: Update existing memories
-- **consolidate_memories**: Merge similar memories
-
-## 📊 Data Format
-
-### Input: Conversation History
-```json
-{
-  "conversations": [
-    {
-      "conversation_id": "conv_001",
-      "timestamp": "2024-01-01T10:00:00",
-      "messages": [
-        {"role": "user", "content": "Hello!"},
-        {"role": "assistant", "content": "Hi there!"}
-      ]
-    }
-  ]
-}
-```
-
-### Output: Conversation Chunks
-```json
-{
-  "chunk_id": "abc123",
-  "conversation_id": "conv_001",
-  "chunk_index": 0,
-  "start_round": 1,
-  "end_round": 20,
-  "text": "Conversation conv_001, Rounds 1-20:\n...",
-  "metadata": {
-    "total_rounds": 20,
-    "has_overlap": false
-  }
-}
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-```bash
-# LLM Provider (openai, kimi, moonshot, doubao)
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o-mini
-
-# API Keys
-OPENAI_API_KEY=your_key_here
-
-# Knowledge Base Type (local, chroma, faiss)
-KB_TYPE=local
-
-# Memory Mode
-MEMORY_MODE=advanced_json_cards
-```
-
-### Python Configuration
-```python
+# 1. Initialize the evaluator
 from config import Config
+from evaluator import UserMemoryEvaluator
 
 config = Config.from_env()
-config.chunking.rounds_per_chunk = 20
-config.rag.top_k = 5
-config.agent.max_iterations = 10
+evaluator = UserMemoryEvaluator(config)
+
+# 2. Load test cases
+test_cases = evaluator.load_test_cases(category="layer1")
+
+# 3. Evaluate a test case
+result = evaluator.evaluate_test_case("layer1_01_bank_account")
+
+# 4. Generate report
+report = evaluator.generate_report("results/evaluation_report.txt")
 ```
 
-## 🎓 Educational Concepts
+### Configuring the System
 
-### 1. Conversation Chunking
-Learn how to segment long conversations into manageable chunks while preserving context through overlapping rounds.
+Key configuration options in `config.py`:
 
-### 2. RAG Implementation
-Understand how to build a retrieval-augmented generation system from scratch using embeddings and semantic search.
-
-### 3. Memory Management
-Explore different memory storage patterns (notes vs. cards) and consolidation strategies for reducing redundancy.
-
-### 4. Agentic Reasoning
-Implement the ReAct (Reasoning + Acting) pattern for systematic problem-solving with tool usage.
-
-### 5. Evaluation Framework
-Build a system for evaluating memory consistency and retrieval accuracy across conversation histories.
-
-## 📈 Performance Optimization
-
-### Chunking Strategy
-- **Optimal chunk size**: 20 rounds balances context and retrieval precision
-- **Overlap**: 2-round overlap maintains conversation flow
-- **Minimum chunk size**: 10 rounds to avoid fragmentation
-
-### Indexing Options
-- **Local**: Fast, simple, good for < 1000 chunks
-- **Chroma**: Persistent, scalable, good for 1000-10000 chunks
-- **FAISS**: High performance, good for > 10000 chunks
-
-### Memory Consolidation
-- Run consolidation when memory count > 100
-- Use similarity threshold of 0.8 for automatic merging
-- Manual review recommended for critical memories
-
-## 🧪 Testing
-
-### Run Basic Tests
-```bash
-# Test chunking
-python main.py chunk test_data/history.json --verbose
-
-# Test indexing
-python main.py build test_data/history.json
-
-# Test queries
-python main.py query "What did we discuss about health?"
-```
-
-### Evaluation Metrics
-- **Retrieval Accuracy**: Precision@K for relevant chunks
-- **Memory Consistency**: Contradiction detection rate
-- **Response Relevance**: Semantic similarity scores
-- **Factual Accuracy**: Verification against ground truth
-
-## 🤝 Integration with Week2 Projects
-
-This project integrates with:
-- **week2/user-memory**: Memory management system
-- **week2/user-memory-evaluation**: Evaluation framework
-
-To use the full user-memory system:
 ```python
-import sys
-sys.path.append("../../week2/user-memory")
-from memory_manager import MemoryManager
+# Chunking settings
+config.chunking.rounds_per_chunk = 20  # Rounds per chunk
+config.chunking.overlap_rounds = 2     # Overlapping rounds
+
+# Index settings
+config.index.mode = "hybrid"           # dense, sparse, or hybrid
+config.index.enable_contextual = True  # Add contextual enrichment
+
+# Agent settings
+config.agent.max_search_results = 5    # Results per search
+config.evaluation.max_iterations = 10  # Max ReAct iterations
 ```
 
-## 📚 Learning Resources
+## 🧪 Test Case Structure
 
-### Key Papers
-- [Retrieval-Augmented Generation](https://arxiv.org/abs/2005.11401)
-- [ReAct: Reasoning and Acting](https://arxiv.org/abs/2210.03629)
-- [Memory-Augmented Networks](https://arxiv.org/abs/1605.06065)
+Test cases follow the user-memory-evaluation framework format:
 
-### Tutorials
-1. [Building RAG from Scratch](https://www.example.com)
-2. [Conversation Chunking Strategies](https://www.example.com)
-3. [Memory Management in AI](https://www.example.com)
+### Test Case Fields
+- `test_id`: Unique identifier
+- `category`: Difficulty layer (layer1, layer2, layer3)
+- `title`: Descriptive title
+- `conversation_histories`: Past conversations to index
+- `user_question`: The question to answer
+- `evaluation_criteria`: Criteria for evaluating responses
+- `expected_behavior`: Optional expected agent behavior
 
-## 🐛 Troubleshooting
+### Layer 1: Simple Information Retrieval
+- Single conversation with clear information
+- Direct questions about specific details
+- Example: "What is my checking account number?"
 
-### Common Issues
+### Layer 2: Multi-Conversation Correlation
+- Multiple related conversations
+- Questions requiring information synthesis
+- Example: "Which of my vehicles needs service first?"
 
-1. **Import Error for user-memory**
-   - Ensure week2/user-memory is in the correct path
-   - Fallback implementations are provided if imports fail
+### Layer 3: Complex Reasoning
+- Hidden patterns and implicit connections
+- Questions requiring deep analysis
+- Example: "What urgent issues should I address before my trip?"
 
-2. **Embedding API Errors**
-   - Check your OpenAI API key is valid
-   - Ensure you have sufficient credits
+## 🔧 Component Details
 
-3. **Memory Not Found**
-   - Run indexing first: `python main.py build history.json`
-   - Check the memories directory exists
+### Chunker (`chunker.py`)
+- Splits conversations into fixed-size chunks
+- Maintains conversation flow with overlapping rounds
+- Adds contextual information to each chunk
 
-4. **Slow Retrieval**
-   - Consider using Chroma or FAISS for large datasets
-   - Reduce chunk size or increase overlap
+### Indexer (`indexer.py`)
+- Integrates with external retrieval pipeline service
+- Sends documents for indexing via HTTP API
+- Manages document ID mapping
+- Performs hybrid searches through the pipeline
 
-## 📝 License
+### Tools (`tools.py`)
+- `search_memory`: Main search interface with full content retrieval
+- `get_conversation_context`: Retrieves surrounding chunks
+- `get_full_conversation`: Gets entire conversation history
+Note: All tools return complete content (not truncated)
 
-This project is for educational purposes as part of the AI Agent Development course.
+### Agent (`agent.py`)
+- Implements ReAct pattern with tool calling
+- Manages conversation state
+- Generates responses based on retrieved information
 
-## 🙏 Acknowledgments
+### Evaluator (`evaluator.py`)
+- Loads test cases from YAML files
+- Manages the indexing pipeline
+- Tracks evaluation metrics and results
+- Integrates automatic LLM evaluation
 
-- Built upon concepts from week2/user-memory and week3/agentic-rag projects
-- Inspired by OpenAI's RAG implementations
-- Uses the ReAct pattern for agent reasoning
+## 📊 Evaluation Metrics
 
----
+The system tracks comprehensive metrics:
+- **Success Rate**: Percentage of correctly answered questions
+- **LLM Evaluation Score**: Automatic reward score (0.0-1.0) with detailed reasoning
+- **Iterations**: Number of ReAct reasoning steps
+- **Tool Calls**: Number and types of tools used
+- **Processing Time**: Response generation time
+- **Indexing Time**: Time to build search indexes
+- **Result Quality**: Controlled by reranking with configurable top_k
 
-**Note**: This is an educational project designed to teach RAG concepts and memory management in conversational AI. For production use, consider additional optimizations and error handling.
+## 🔍 Troubleshooting
+
+### Top-K Results Issue
+**Problem**: Getting 10 results regardless of `top_k` setting  
+**Solution**: The retrieval pipeline uses two parameters:
+- `top_k`: Initial retrieval count (for candidates)
+- `rerank_top_k`: Final result count (what you actually get)
+
+The system now correctly sets both parameters to respect your requested result count.
+
+### LLM Evaluation Not Running
+**Problem**: No automatic evaluation after agent response  
+**Solution**: Ensure you have:
+- Valid OpenAI API key for evaluation
+- Access to week2/user-memory-evaluation module
+- Proper test case format with evaluation_criteria
+
+### Retrieval Pipeline Connection
+**Problem**: Cannot connect to retrieval pipeline  
+**Solution**: 
+- Start the service: `cd projects/week3/retrieval-pipeline && python main.py`
+- Verify it's running on `http://localhost:4242`
+- Check firewall settings if connection fails
+
+## 📄 License
+
+This project is part of the AI Agent training curriculum and is intended for educational purposes.
+
+## 🔗 Related Projects
+
+- `week2/user-memory`: Basic user memory system
+- `week2/user-memory-evaluation`: Evaluation framework
+- `week3/agentic-rag`: Original agentic RAG implementation
+- `week3/contextual-retrieval`: Advanced retrieval techniques

@@ -94,7 +94,8 @@ After receiving tool results, use them to provide a comprehensive answer to the 
     
     def _execute_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Execute tool calls and return results
+        Execute tool calls and return results.
+        Ensures that error messages from failed tool executions are properly formatted.
         """
         results = []
         
@@ -108,15 +109,34 @@ After receiving tool results, use them to provide a comprehensive answer to the 
             # Execute the tool
             result = self.tool_registry.execute_tool(tool_name, tool_args)
             
+            # Check if the result indicates an error
+            try:
+                result_dict = json.loads(result) if isinstance(result, str) else result
+                if isinstance(result_dict, dict) and not result_dict.get("success", True):
+                    # Tool execution failed - format error message clearly
+                    error_msg = f"❌ Tool '{tool_name}' execution failed:\n"
+                    if "error" in result_dict:
+                        error_msg += f"Error: {result_dict['error']}\n"
+                    if "error_type" in result_dict:
+                        error_msg += f"Type: {result_dict['error_type']}\n"
+                    if "traceback" in result_dict:
+                        error_msg += f"Traceback:\n{result_dict['traceback']}\n"
+                    
+                    logger.error(f"Tool {tool_name} failed: {result_dict.get('error', 'Unknown error')}")
+                    result = error_msg
+                else:
+                    logger.debug(f"Tool {tool_name} returned: {result}")
+            except (json.JSONDecodeError, TypeError):
+                # Result is not JSON, just pass it through
+                logger.debug(f"Tool {tool_name} returned: {result}")
+            
             # Format the result
             results.append({
                 "role": "tool",
                 "tool_call_id": tool_id,
                 "name": tool_name,
-                "content": result
+                "content": result if isinstance(result, str) else str(result)
             })
-            
-            logger.debug(f"Tool {tool_name} returned: {result}")
         
         return results
     
@@ -339,7 +359,28 @@ After receiving tool results, use them to provide a comprehensive answer to the 
                                             tool_data["name"], 
                                             tool_data["arguments"]
                                         )
-                                        yield {"type": "tool_result", "content": result}
+                                        
+                                        # Check if the result indicates an error
+                                        try:
+                                            result_dict = json.loads(result) if isinstance(result, str) else result
+                                            if isinstance(result_dict, dict) and not result_dict.get("success", True):
+                                                # Tool execution failed - format error message clearly
+                                                error_msg = f"❌ Tool '{tool_data['name']}' execution failed:\n"
+                                                if "error" in result_dict:
+                                                    error_msg += f"Error: {result_dict['error']}\n"
+                                                if "error_type" in result_dict:
+                                                    error_msg += f"Type: {result_dict['error_type']}\n"
+                                                if "traceback" in result_dict:
+                                                    error_msg += f"Traceback:\n{result_dict['traceback']}\n"
+                                                
+                                                logger.error(f"Tool {tool_data['name']} failed: {result_dict.get('error', 'Unknown error')}")
+                                                result = error_msg
+                                                yield {"type": "tool_error", "content": error_msg}
+                                            else:
+                                                yield {"type": "tool_result", "content": result}
+                                        except (json.JSONDecodeError, TypeError):
+                                            # Result is not JSON, just pass it through
+                                            yield {"type": "tool_result", "content": result}
                                         
                                         # Add to history
                                         self.conversation_history.append({
@@ -348,7 +389,15 @@ After receiving tool results, use them to provide a comprehensive answer to the 
                                             "name": tool_data["name"]
                                         })
                                     except Exception as e:
+                                        error_msg = f"❌ Tool execution exception: {str(e)}"
                                         logger.error(f"Tool execution error: {e}")
+                                        yield {"type": "tool_error", "content": error_msg}
+                                        # Add error to history so agent can see it
+                                        self.conversation_history.append({
+                                            "role": "user",
+                                            "content": f'<tool_response>\n{error_msg}\n</tool_response>',
+                                            "name": tool_data.get("name", "unknown")
+                                        })
                                 tool_calls_buffer = ""
                         else:
                             # Regular content

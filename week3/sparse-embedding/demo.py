@@ -16,7 +16,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Server URL
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:4241"
 
 
 def wait_for_server(max_attempts=10):
@@ -188,33 +188,42 @@ def show_index_structure():
     
     response = requests.get(f"{BASE_URL}/index/structure")
     if response.status_code == 200:
-        structure = response.json()
+        data = response.json()
         
         # Show BM25 parameters
         logger.info("\nBM25 Parameters:")
-        params = structure['bm25_params']
+        params = data['bm25_params']
         logger.info(f"  k1 (term frequency saturation): {params['k1']}")
         logger.info(f"  b (length normalization): {params['b']}")
         logger.info(f"  avgdl (average document length): {params['avgdl']:.2f}")
         
+        # The actual structure is nested under 'structure' key
+        structure = data.get('structure', {})
+        
         # Show sample of inverted index
         logger.info("\nSample of Inverted Index (first 5 terms):")
-        inv_index = structure['inverted_index']
-        for i, (term, info) in enumerate(list(inv_index.items())[:5]):
-            logger.info(f"  '{term}':")
-            logger.info(f"    - Document frequency: {info['document_frequency']}")
-            logger.info(f"    - Appears in documents: {info['document_ids']}")
+        inv_index = structure.get('inverted_index', {})
+        if inv_index:
+            for i, (term, info) in enumerate(list(inv_index.items())[:5]):
+                logger.info(f"  '{term}':")
+                logger.info(f"    - Document frequency: {info['document_frequency']}")
+                logger.info(f"    - Appears in documents: {info['document_ids']}")
+        else:
+            logger.info("  No inverted index data available")
         
         # Show document information
         logger.info("\nDocument Information:")
-        doc_info = structure['document_info']
-        for doc_id, info in list(doc_info.items())[:3]:  # Show first 3 documents
-            logger.info(f"  Document {doc_id}:")
-            logger.info(f"    - Length: {info['length']} terms")
-            logger.info(f"    - Unique terms: {info['unique_terms']}")
-            logger.info(f"    - Top terms: {[f'{term}({freq})' for term, freq in info['top_terms'][:5]]}")
+        doc_info = structure.get('document_info', {})
+        if doc_info:
+            for doc_id, info in list(doc_info.items())[:3]:  # Show first 3 documents
+                logger.info(f"  Document {doc_id}:")
+                logger.info(f"    - Length: {info['length']} terms")
+                logger.info(f"    - Unique terms: {info['unique_terms']}")
+                logger.info(f"    - Top terms: {[f'{term}({freq})' for term, freq in info['top_terms'][:5]]}")
+        else:
+            logger.info("  No document information available")
     
-    return structure
+    return data
 
 
 def test_specific_document_retrieval():

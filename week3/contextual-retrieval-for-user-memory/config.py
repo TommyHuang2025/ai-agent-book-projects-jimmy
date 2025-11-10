@@ -1,260 +1,253 @@
-"""
-Configuration for Contextual Retrieval User Memory System
-"""
+"""Configuration for Agentic RAG User Memory Evaluation System"""
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any, List
 from enum import Enum
 from pathlib import Path
 
 
-class RetrievalMode(Enum):
-    """Retrieval mode for memory search"""
-    CONTEXTUAL = "contextual"
-    NON_CONTEXTUAL = "non_contextual"
-    BASELINE = "baseline"
-    COMPARE = "compare"
+class Provider(str, Enum):
+    """Supported LLM providers"""
+    SILICONFLOW = "siliconflow"
+    DOUBAO = "doubao"
+    KIMI = "kimi"
+    MOONSHOT = "moonshot"
+    OPENROUTER = "openrouter"
+    OPENAI = "openai"
+    GROQ = "groq"
+    TOGETHER = "together"
+    DEEPSEEK = "deepseek"
 
 
-class SearchStrategy(Enum):
-    """Search strategy for hybrid retrieval"""
-    BM25_ONLY = "bm25"
-    EMBEDDING_ONLY = "embedding"
-    HYBRID = "hybrid"
-    HYBRID_RRF = "hybrid_rrf"  # Reciprocal Rank Fusion
+class IndexMode(str, Enum):
+    """Indexing modes for conversation chunks"""
+    DENSE = "dense"  # Dense embedding only
+    SPARSE = "sparse"  # Sparse embedding only (BM25)
+    HYBRID = "hybrid"  # Both dense and sparse
+
+
+class ChunkingStrategy(str, Enum):
+    """Strategies for chunking conversations"""
+    FIXED_ROUNDS = "fixed_rounds"  # Fixed number of rounds per chunk
+    SEMANTIC = "semantic"  # Semantic boundaries
+    TIME_BASED = "time_based"  # Based on timestamp gaps
 
 
 @dataclass
 class LLMConfig:
     """LLM configuration"""
-    provider: str = "kimi"  # kimi, doubao, openai, siliconflow
-    model: Optional[str] = None
-    api_key: Optional[str] = None
+    provider: str = "kimi"  # Default provider
+    model: Optional[str] = None  # Will use provider defaults if not specified
+    api_key: Optional[str] = None  # Will read from env if not provided
     temperature: float = 0.7
-    max_tokens: int = 4096
+    max_tokens: int = 2048
+    stream: bool = True
     
-    def get_api_key(self) -> str:
-        """Get API key from config or environment"""
-        if self.api_key:
-            return self.api_key
-        
-        # Map provider to environment variable
-        env_map = {
-            "kimi": "MOONSHOT_API_KEY",
-            "moonshot": "MOONSHOT_API_KEY",
-            "doubao": "ARK_API_KEY",
-            "openai": "OPENAI_API_KEY",
-            "siliconflow": "SILICONFLOW_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY"
+    # Provider-specific defaults
+    PROVIDER_DEFAULTS = {
+        "siliconflow": {
+            "model": "Qwen/Qwen3-235B-A22B-Thinking-2507",
+            "base_url": "https://api.siliconflow.cn/v1"
+        },
+        "doubao": {
+            "model": "doubao-seed-1-6-thinking-250715",
+            "base_url": "https://ark.cn-beijing.volces.com/api/v3"
+        },
+        "kimi": {
+            "model": "kimi-k2-0905-preview",
+            "base_url": "https://api.moonshot.cn/v1"
+        },
+        "moonshot": {
+            "model": "kimi-k2-0905-preview",
+            "base_url": "https://api.moonshot.cn/v1"
+        },
+        "openrouter": {
+            "model": "openai/gpt-4o-2024-11-20",
+            "base_url": "https://openrouter.ai/api/v1"
+        },
+        "openai": {
+            "model": "gpt-4o-2024-11-20",
+            "base_url": "https://api.openai.com/v1"
+        },
+        "groq": {
+            "model": "llama-3.3-70b-versatile",
+            "base_url": "https://api.groq.com/openai/v1"
+        },
+        "together": {
+            "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+            "base_url": "https://api.together.xyz"
+        },
+        "deepseek": {
+            "model": "deepseek-reasoner",
+            "base_url": "https://api.deepseek.com/v1"
         }
-        
-        env_var = env_map.get(self.provider.lower())
-        if env_var:
-            return os.getenv(env_var, "")
-        return ""
+    }
     
-    def get_base_url(self) -> Optional[str]:
-        """Get base URL for provider"""
-        url_map = {
-            "kimi": "https://api.moonshot.cn/v1",
-            "moonshot": "https://api.moonshot.cn/v1",
-            "doubao": "https://ark.cn-beijing.volces.com/api/v3",
-            "siliconflow": "https://api.siliconflow.cn/v1"
-        }
-        return url_map.get(self.provider.lower())
-    
-    def get_model_name(self) -> str:
-        """Get model name with defaults"""
-        if self.model:
-            return self.model
+    def get_client_config(self) -> tuple[Dict[str, Any], str]:
+        """Get OpenAI client configuration"""
+        provider = self.provider.lower()
+        defaults = self.PROVIDER_DEFAULTS.get(provider, {})
         
-        # Default models for each provider
-        defaults = {
-            "kimi": "kimi-k2-0905-preview",
-            "moonshot": "kimi-k2-0905-preview",
-            "doubao": "doubao-seed-1-6-thinking-250715",
-            "openai": "gpt-4o-mini",
-            "siliconflow": "Qwen/Qwen3-235B-A22B-Thinking-2507",
-            "anthropic": "claude-3-haiku-20240307"
-        }
-        return defaults.get(self.provider.lower(), "gpt-4o-mini")
+        # Determine API key
+        api_key = self.api_key or os.getenv(f"{provider.upper()}_API_KEY")
+        if not api_key and provider == "moonshot":
+            api_key = os.getenv("KIMI_API_KEY")  # Fallback for moonshot
+        
+        # Determine model
+        model = self.model or defaults.get("model", "gpt-4o")
+        
+        # Build client config
+        client_config = {"api_key": api_key}
+        
+        # Add base URL if needed
+        if base_url := defaults.get("base_url"):
+            client_config["base_url"] = base_url
+        
+        return client_config, model
 
 
 @dataclass
-class IndexingConfig:
-    """Configuration for memory indexing"""
-    chunk_size: int = 20  # Number of conversation rounds per chunk
-    chunk_overlap: int = 2  # Overlapping rounds between chunks
-    min_chunk_size: int = 5  # Minimum rounds for a chunk
-    
-    # Context generation
-    enable_contextual: bool = True
-    context_window_size: int = 50  # Rounds to consider for context
-    context_model: str = "claude-3-haiku-20240307"  # Efficient model for context generation
-    max_context_length: int = 150  # Max tokens for generated context
-    
-    # Embedding configuration
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimension: int = 1536
-    
-    # BM25 configuration
-    bm25_k1: float = 1.5  # Term frequency saturation
-    bm25_b: float = 0.75  # Length normalization
-    
-    # Storage
-    index_dir: str = "memory_indexes"
-    enable_persistence: bool = True
+class ChunkingConfig:
+    """Configuration for conversation chunking"""
+    strategy: ChunkingStrategy = ChunkingStrategy.FIXED_ROUNDS
+    rounds_per_chunk: int = 20  # Number of rounds per chunk for FIXED_ROUNDS
+    overlap_rounds: int = 2  # Number of overlapping rounds between chunks
+    include_metadata: bool = True  # Include conversation metadata in chunks
+    min_chunk_size: int = 5  # Minimum number of rounds in a chunk
+    max_chunk_size: int = 50  # Maximum number of rounds in a chunk
 
 
 @dataclass
-class AgentConfig:
-    """Configuration for the agentic memory agent"""
-    max_iterations: int = 5  # Max ReAct iterations
-    enable_reasoning: bool = True  # Show reasoning steps
-    enable_tool_calling: bool = True
-    
-    # Search configuration
-    search_top_k: int = 10  # Number of chunks to retrieve
-    rerank_top_k: int = 5  # After reranking
-    enable_reranking: bool = True
-    reranking_model: Optional[str] = None  # Use LLM for reranking if specified
-    
-    # Hybrid search weights
-    bm25_weight: float = 0.4
-    embedding_weight: float = 0.6
-    
-    # Advanced features
-    use_hyde: bool = False  # Hypothetical Document Embeddings
-    enable_query_expansion: bool = False
-    enable_metadata_filtering: bool = True
-    
-    # Memory context
-    max_memory_context: int = 10  # Max memory chunks in context
-    include_conversation_context: bool = True
+class IndexConfig:
+    """Configuration for RAG indexing"""
+    mode: IndexMode = IndexMode.HYBRID
+    embedding_model: str = "text-embedding-3-small"  # OpenAI embedding model
+    embedding_dim: int = 1536  # Dimension of embeddings
+    index_path: str = "indexes/memory_index"
+    chunk_store_path: str = "data/chunk_store.json"
+    enable_contextual: bool = True  # Add contextual information to chunks
+    contextual_window: int = 2  # Number of surrounding rounds for context
 
 
 @dataclass
 class EvaluationConfig:
     """Configuration for evaluation framework"""
-    test_cases_dir: str = "test_cases"
-    results_dir: str = "evaluation_results"
-    
-    # Evaluation modes
-    compare_modes: List[RetrievalMode] = field(
-        default_factory=lambda: [RetrievalMode.CONTEXTUAL, RetrievalMode.NON_CONTEXTUAL]
-    )
-    
-    # Metrics to track
-    track_metrics: List[str] = field(
-        default_factory=lambda: [
-            "precision", "recall", "f1", "mrr",  # Retrieval metrics
-            "answer_accuracy", "completeness",  # Answer quality
-            "tool_calls", "iterations", "latency"  # Performance metrics
-        ]
-    )
-    
-    # Evaluation settings
+    test_cases_dir: str = "../../week2/user-memory-evaluation/test_cases"
+    results_dir: str = "results"
     enable_verbose: bool = True
     save_trajectories: bool = True
-    generate_report: bool = True
-    
-    # Sampling for large test sets
-    sample_size: Optional[int] = None  # None means use all
-    random_seed: int = 42
+    max_iterations: int = 10  # Max iterations for ReAct pattern
+    enable_caching: bool = True  # Cache indexed conversations
+    use_llm_judge: bool = False  # Use LLM to evaluate answers
+
+
+@dataclass
+class AgentConfig:
+    """Agent behavior configuration"""
+    enable_reasoning: bool = True  # Show reasoning steps
+    enable_citations: bool = True  # Include citations in responses
+    max_search_results: int = 5  # Maximum search results to consider
+    confidence_threshold: float = 0.7  # Minimum confidence for answers
+    enable_multi_search: bool = True  # Allow multiple searches per query
+    max_searches_per_query: int = 3  # Maximum searches allowed
+    verbose: bool = True  # Enable verbose output
 
 
 @dataclass
 class Config:
-    """Main configuration class"""
+    """Main configuration container"""
     llm: LLMConfig = field(default_factory=LLMConfig)
-    indexing: IndexingConfig = field(default_factory=IndexingConfig)
-    agent: AgentConfig = field(default_factory=AgentConfig)
+    chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
+    index: IndexConfig = field(default_factory=IndexConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
-    
-    # System settings
-    debug: bool = False
-    verbose: bool = True
-    log_file: Optional[str] = "memory_agent.log"
+    agent: AgentConfig = field(default_factory=AgentConfig)
     
     @classmethod
     def from_env(cls) -> "Config":
-        """Create config from environment variables"""
+        """Create configuration from environment variables"""
         config = cls()
         
-        # LLM configuration from environment
-        config.llm.provider = os.getenv("LLM_PROVIDER", "kimi")
-        config.llm.model = os.getenv("LLM_MODEL")
-        config.llm.temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+        # Override with environment variables
+        if provider := os.getenv("LLM_PROVIDER"):
+            config.llm.provider = provider
         
-        # Indexing configuration
-        config.indexing.chunk_size = int(os.getenv("CHUNK_SIZE", "20"))
-        config.indexing.enable_contextual = os.getenv("ENABLE_CONTEXTUAL", "true").lower() == "true"
-        config.indexing.embedding_model = os.getenv("EMBEDDING_MODEL", config.indexing.embedding_model)
+        if model := os.getenv("LLM_MODEL"):
+            config.llm.model = model
         
-        # Agent configuration
-        config.agent.max_iterations = int(os.getenv("MAX_ITERATIONS", "5"))
-        config.agent.search_top_k = int(os.getenv("SEARCH_TOP_K", "10"))
-        config.agent.enable_reranking = os.getenv("ENABLE_RERANKING", "true").lower() == "true"
+        if rounds := os.getenv("ROUNDS_PER_CHUNK"):
+            config.chunking.rounds_per_chunk = int(rounds)
         
-        # Debug mode
-        config.debug = os.getenv("DEBUG", "false").lower() == "true"
-        config.verbose = config.debug or os.getenv("VERBOSE", "false").lower() == "true"
+        if index_mode := os.getenv("INDEX_MODE"):
+            config.index.mode = IndexMode(index_mode)
         
         return config
     
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Config":
-        """Create config from dictionary"""
-        config = cls()
+    def save(self, path: str):
+        """Save configuration to JSON file"""
+        import json
         
-        # Update LLM config
-        if "llm" in data:
-            for key, value in data["llm"].items():
-                if hasattr(config.llm, key):
-                    setattr(config.llm, key, value)
-        
-        # Update other configs similarly
-        for section in ["indexing", "agent", "evaluation"]:
-            if section in data:
-                section_config = getattr(config, section)
-                for key, value in data[section].items():
-                    if hasattr(section_config, key):
-                        setattr(section_config, key, value)
-        
-        return config
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert config to dictionary"""
-        return {
+        config_dict = {
             "llm": {
                 "provider": self.llm.provider,
                 "model": self.llm.model,
                 "temperature": self.llm.temperature,
-                "max_tokens": self.llm.max_tokens
+                "max_tokens": self.llm.max_tokens,
+                "stream": self.llm.stream
             },
-            "indexing": {
-                "chunk_size": self.indexing.chunk_size,
-                "chunk_overlap": self.indexing.chunk_overlap,
-                "enable_contextual": self.indexing.enable_contextual,
-                "embedding_model": self.indexing.embedding_model
+            "chunking": {
+                "strategy": self.chunking.strategy,
+                "rounds_per_chunk": self.chunking.rounds_per_chunk,
+                "overlap_rounds": self.chunking.overlap_rounds,
+                "include_metadata": self.chunking.include_metadata
             },
-            "agent": {
-                "max_iterations": self.agent.max_iterations,
-                "search_top_k": self.agent.search_top_k,
-                "enable_reranking": self.agent.enable_reranking,
-                "bm25_weight": self.agent.bm25_weight,
-                "embedding_weight": self.agent.embedding_weight
+            "index": {
+                "mode": self.index.mode,
+                "embedding_model": self.index.embedding_model,
+                "enable_contextual": self.index.enable_contextual,
+                "contextual_window": self.index.contextual_window
             },
             "evaluation": {
-                "test_cases_dir": self.evaluation.test_cases_dir,
-                "results_dir": self.evaluation.results_dir,
-                "compare_modes": [mode.value for mode in self.evaluation.compare_modes]
+                "enable_verbose": self.evaluation.enable_verbose,
+                "save_trajectories": self.evaluation.save_trajectories,
+                "max_iterations": self.evaluation.max_iterations
+            },
+            "agent": {
+                "enable_reasoning": self.agent.enable_reasoning,
+                "enable_citations": self.agent.enable_citations,
+                "max_search_results": self.agent.max_search_results,
+                "confidence_threshold": self.agent.confidence_threshold
             }
         }
-
-
-# Convenience function for getting default config
-def get_default_config() -> Config:
-    """Get default configuration, preferring environment variables"""
-    return Config.from_env()
+        
+        with open(path, 'w') as f:
+            json.dump(config_dict, f, indent=2)
+    
+    @classmethod
+    def load(cls, path: str) -> "Config":
+        """Load configuration from JSON file"""
+        import json
+        
+        with open(path, 'r') as f:
+            config_dict = json.load(f)
+        
+        config = cls()
+        
+        # Update LLM config
+        if "llm" in config_dict:
+            for key, value in config_dict["llm"].items():
+                setattr(config.llm, key, value)
+        
+        # Update other configs similarly
+        for section in ["chunking", "index", "evaluation", "agent"]:
+            if section in config_dict:
+                section_config = getattr(config, section)
+                for key, value in config_dict[section].items():
+                    # Handle enums
+                    if key == "strategy" and section == "chunking":
+                        value = ChunkingStrategy(value)
+                    elif key == "mode" and section == "index":
+                        value = IndexMode(value)
+                    setattr(section_config, key, value)
+        
+        return config

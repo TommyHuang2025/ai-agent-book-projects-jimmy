@@ -116,6 +116,9 @@ class SystemHintAgent:
         # Track current working directory
         self.current_directory = os.getcwd()
         
+        # Track last messages sent to LLM
+        self.last_llm_messages = None
+        
         logger.info(f"System-Hint Agent initialized with provider: {self.provider}, model: {self.model}")
     
     def _init_system_prompt(self):
@@ -204,6 +207,7 @@ Important: When you have completed all tasks, clearly state "FINAL ANSWER:" foll
             "provider": self.provider,
             "model": self.model,
             "conversation_history": self.conversation_history,
+            "last_llm_messages": self.last_llm_messages,
             "tool_calls": [
                 {
                     "tool_name": call.tool_name,
@@ -805,6 +809,9 @@ Important: When you have completed all tasks, clearly state "FINAL ANSWER:" foll
                 if system_hint:
                     messages_to_send.append({"role": "user", "content": system_hint})
                 
+                # Store the messages being sent to LLM for trajectory logging
+                self.last_llm_messages = messages_to_send
+                
                 # Call the model
                 response = self.client.chat.completions.create(
                     model=self.model,
@@ -961,5 +968,6 @@ Important: When you have completed all tasks, clearly state "FINAL ANSWER:" foll
         self.next_todo_id = 1
         self.current_directory = os.getcwd()
         self.simulated_time = datetime.now()
+        self.last_llm_messages = None
         self._init_system_prompt()
         logger.info("Agent state reset")
