@@ -150,11 +150,20 @@ class CodingAgent:
             try:
                 if self.client_type == "anthropic":
                     # Use Anthropic streaming
-                    yield from self._run_anthropic_iteration(messages_with_hint, iteration)
+                    iteration_generator = self._run_anthropic_iteration(messages_with_hint, iteration)
                 else:
                     # Use OpenAI/OpenRouter streaming
-                    yield from self._run_openai_iteration(messages_with_hint, iteration)
-                    
+                    iteration_generator = self._run_openai_iteration(messages_with_hint, iteration)
+                
+                should_break = False
+                for event in iteration_generator:
+                    yield event
+                    if event.get("type") == "done":
+                        should_break = True
+                
+                if should_break:
+                    break
+   
             except Exception as e:
                 yield {"type": "error", "error": str(e)}
                 break
